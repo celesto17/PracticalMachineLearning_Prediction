@@ -1,0 +1,173 @@
+---
+title: "Practicle Machine Learning - Course Project"
+author: "Sanjay Lonkar"
+date: "13 Jul 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopisis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The goal of this project is to predict the manner in which they did the exercise. The 5 possible outcomes are -
+
+A: Exactly according to the specification
+
+
+B: Throwing the elbows to the front
+
+
+C: Lifting the dumbbell only halfway
+
+
+D: Lowering the dumbbell only halfway
+
+
+E: Throwing the hips to the front
+
+https://www.coursera.org/learn/practical-machine-learning/peer/R43St/prediction-assignment-writeup
+
+
+## Project
+
+
+Code of this project is divided into following parts:
+
+1. Load dataset. Perform data cleaning and exploratory data analysis
+2. Partition Datasets to have following subsets:
+    a. Given Training dataset divided into Training & Validation data sets (70-30% split) 
+    b. Given Testing dataset
+3. Develop 3 prediction models
+    a. Decision Tree
+    b. Random Forest
+    3. GBM
+
+4.Apply best prediction model to Testing dataset to get the results 
+
+
+Github repo containing R Markdown and generated HTML is available https://github.com/celesto17/PracticalMachineLearning_Prediction
+
+### 1. Load dataset. Perform data cleaning and exploratory data analysis
+
+
+```{r echo=TRUE, results='hide'}
+if (!file.exists("./downloadedDataset"))
+{
+  dir.create("./downloadedDataset")
+}
+if (!file.exists ("./downloadedDataset/pml-training.csv")) # This step is to avoid downloading data every time one runs this script
+{
+  datasetURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file (datasetURL, destfile="./downloadedDataset/pml-training.csv")
+}
+if (!file.exists ("./downloadedDataset/pml-testing.csv")) # This step is to avoid downloading data every time one runs this script
+{
+  datasetURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file (datasetURL, destfile="./downloadedDataset/pml-testing.csv")
+}
+
+# Load Libraries
+library(caret)
+library(rpart)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+
+# Load and clean dataset
+trainingDataSet <- read.csv("./downloadedDataset/pml-training.csv", sep=",", header=TRUE, na.strings = c("NA","",'#DIV/0!'))
+testingDataSet <- read.csv("./downloadedDataset/pml-testing.csv", sep=",", header=TRUE, na.strings = c("NA","",'#DIV/0!'))
+```
+
+```{r echo=TRUE}
+print (cat("Original Datasets Dimensions - Training dataset: ", dim (trainingDataSet), "Testing dataset: ", dim (testingDataSet), ""))
+```
+
+```{r echo=TRUE}
+# Remove columns with large number of missing values
+trainingDataSet <- trainingDataSet[,(colSums(is.na(trainingDataSet)) == 0)]
+testingDataSet <- testingDataSet[,(colSums(is.na(testingDataSet)) == 0)]
+
+print (cat("Datasets dimensions after removing columns with large number of missing values - Training dataset: ", dim (trainingDataSet), "Testing dataset: ", dim (testingDataSet), ""))
+```
+
+```{r echo=TRUE}
+# Remove first 7 columns having no significance
+trainingDataSet <- trainingDataSet [, -c(1:7)]
+testingDataSet <- testingDataSet [, -c(1:7)]
+
+print (cat("Datasets dimensions after removing first 7 columns of no significance - Training dataset: ", dim (trainingDataSet), "Testing dataset: ", dim (testingDataSet), ""))
+```
+
+```{r echo=TRUE}
+# Remove near zero variance variables
+NZV <- nearZeroVar (trainingDataSet, saveMetrics=TRUE)
+trainingDataSet <- trainingDataSet [, NZV$nzv==FALSE]
+
+NZV <- nearZeroVar (testingDataSet, saveMetrics=TRUE)
+testingDataSet  <- testingDataSet[, NZV$nzv==FALSE]
+
+print (cat("Lastly, datasets dimensions after removing near zero variance variables - Training dataset: ", dim (trainingDataSet), "Testing dataset: ", dim (testingDataSet), ""))
+```
+
+### 2. Partition Datasets to have following subsets:
+
+a. Given Training dataset divided into Training & Validation data sets (70-30% split) 
+b. Given Testing dataset
+```{r echo=TRUE}
+trainingDataPartition <- createDataPartition (trainingDataSet$classe, p = 0.7, list = FALSE)
+trainingDataSet <- trainingDataSet [trainingDataPartition, ]
+validationDataSet <- trainingDataSet [-trainingDataPartition, ]
+print (cat("Datasets dimension after splitting Training dataset - Training dataset: ", dim (trainingDataSet), "Validation dataset: ", dim (validationDataSet), ""))
+```
+
+
+### 3. Develop 3 prediction models - a. Decision Tree
+
+```{r echo=TRUE}
+set.seed(1234)
+decisionTreeModel <- rpart (classe ~ ., data = trainingDataSet, method="class")
+# Validate decision tree model
+predictTreeModel <- predict (decisionTreeModel, validationDataSet, type = "class")
+confMatrixTM <- confusionMatrix (predictTreeModel, validationDataSet$classe)
+confMatrixTM
+```
+
+### 3. Develop 3 prediction models - b. Random Forests
+```{r echo=TRUE}
+controlRF <- trainControl (method="cv", number=3, verboseIter=FALSE)
+randomForestModel <- train(classe ~ ., data=trainingDataSet, method="rf", trControl=controlRF)
+randomForestModel$finalModel
+# Validate random forest model
+predictRandomForest <- predict(randomForestModel, newdata=validationDataSet)
+confMatrixRF <- confusionMatrix (predictRandomForest, validationDataSet$classe)
+confMatrixRF
+```
+
+
+### 3. Develop 3 prediction models - c. GBM
+```{r echo=TRUE}
+set.seed(12345)
+controlGBM <- trainControl (method = "repeatedcv", number = 5, repeats = 1)
+GBMModel  <- train (classe ~ ., data = trainingDataSet, method = "gbm", trControl = controlGBM, verbose = FALSE)
+GBMModel$finalModel
+print(GBMModel)
+# Validate GBM model
+predictGBM <- predict (GBMModel, newdata = validationDataSet)
+confMatrixGBM <- confusionMatrix(predictGBM, validationDataSet$classe)
+confMatrixGBM
+```
+
+
+We observe Accuracy of Decision Tree, Random Forest and GBM is 0.72, 1, 0.97 respectively. Hence, we choose most optimum Random Forest model and apply it to Training dataset.
+
+### 4.Apply best prediction model to Testing dataset to get the results 
+```{r echo=TRUE}
+finalResults <- predict (randomForestModel, newdata = testingDataSet)
+finalResults
+```
